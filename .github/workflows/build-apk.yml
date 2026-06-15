@@ -28,6 +28,16 @@ jobs:
           sed -i 's/-XX:MaxPermSize=[0-9]*[mgMG]//g' gradle.properties
         fi
 
+    - name: Fix Kotlin KAPT version conflict
+      run: |
+        if [ -f app/build.gradle.kts ]; then
+          echo "Removing explicit version from kapt plugin in app/build.gradle.kts..."
+          sed -i '/kapt/s/\s*version\s*["'\''][^"'\'']*["'\'']//g' app/build.gradle.kts
+          sed -i '/kapt/s/\s*version([^)]*)//g' app/build.gradle.kts
+          echo "Resulting line 1:"
+          head -n 1 app/build.gradle.kts
+        fi
+
     - name: Setup Gradle (Fixed Version)
       uses: gradle/actions/setup-gradle@v3
       with:
