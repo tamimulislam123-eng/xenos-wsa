@@ -34,43 +34,34 @@ jobs:
           echo "Removing explicit version from kapt plugin in app/build.gradle.kts..."
           sed -i '/kapt/s/\s*version\s*["'\''][^"'\'']*["'\'']//g' app/build.gradle.kts
           sed -i '/kapt/s/\s*version([^)]*)//g' app/build.gradle.kts
-          echo "Resulting line 1:"
-          head -n 1 app/build.gradle.kts
         fi
 
     - name: Create fallback launcher icons
       run: |
         mkdir -p app/src/main/res/mipmap
-        cat << 'EOF' > app/src/main/res/mipmap/ic_launcher.xml
-        <vector xmlns:android="http://schemas.android.com/apk/res/android"
-            android:width="24dp"
-            android:height="24dp"
-            android:viewportWidth="24"
-            android:viewportHeight="24">
-          <path android:fillColor="#FF007ACC" android:pathData="M12,2L2,22h20L12,2z"/>
-        </vector>
-        EOF
+        echo '<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24"><path android:fillColor="#FF007ACC" android:pathData="M12,2L2,22h20L12,2z"/></vector>' > app/src/main/res/mipmap/ic_launcher.xml
         cp app/src/main/res/mipmap/ic_launcher.xml app/src/main/res/mipmap/ic_launcher_round.xml
         echo "Fallback launcher icons created successfully."
 
     - name: Configure global Kotlin compiler options and opt-ins
+      shell: python
       run: |
-        if [ -f app/build.gradle.kts ]; then
-          cat << 'EOF' >> app/build.gradle.kts
-
-          tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
-              kotlinOptions {
-                  allWarningsAsErrors = false
-                  freeCompilerArgs = freeCompilerArgs + listOf(
-                      "-opt-in=androidx.compose.material3.ExperimentalMaterial3Api",
-                      "-opt-in=androidx.compose.material.ExperimentalMaterialApi",
-                      "-opt-in=kotlin.RequiresOptIn"
-                  )
-              }
-          }
-          EOF
-          echo "Global Kotlin compiler opt-ins appended to app/build.gradle.kts."
-        fi
+        import os
+        file_path = "app/build.gradle.kts"
+        if os.path.exists(file_path):
+            with open(file_path, "a") as f:
+                f.write("\n")
+                f.write("tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {\n")
+                f.write("    kotlinOptions {\n")
+                f.write("        allWarningsAsErrors = false\n")
+                f.write("        freeCompilerArgs = freeCompilerArgs + listOf(\n")
+                f.write("            \"-opt-in=androidx.compose.material3.ExperimentalMaterial3Api\",\n")
+                f.write("            \"-opt-in=androidx.compose.material.ExperimentalMaterialApi\",\n")
+                f.write("            \"-opt-in=kotlin.RequiresOptIn\"\n")
+                f.write("        )\n")
+                f.write("    }\n")
+                f.write("}\n")
+            print("Global Kotlin compiler opt-ins appended successfully.")
 
     - name: Auto-patch Kotlin type mismatch in LightweightEmulator
       shell: python
@@ -85,24 +76,31 @@ jobs:
             
             idx = 210 # line 211
             if idx < len(lines):
-                line = lines[idx]
-                print(f"Original line 211: {repr(line)}")
+                orig = lines[idx]
+                print(f"Original line 211: {orig.strip()}")
                 
-                # Find the token causing the Int vs Long mismatch around column 31
-                match = re.search(r'([a-zA-Z0-9_]+)', line[25:])
-                if match:
-                    token = match.group(1)
-                    print(f"Found token '{token}' near column 31")
-                    if token.isdigit():
-                        new_token = token + "L"
+                # Find the precise word spanning across column 31
+                target_word = None
+                target_match = None
+                for match in re.finditer(r'\b[a-zA-Z0-9_]+\b', orig):
+                    if match.start() <= 31 <= match.end():
+                        target_word = match.group(0)
+                        target_match = match
+                        break
+                
+                if target_word:
+                    print(f"Found target word '{target_word}' at column 31")
+                    if target_word.isdigit():
+                        new_word = target_word + "L"
                     else:
-                        new_token = f"{token}.toLong()"
-                    
-                    lines[idx] = line[:25] + line[25:].replace(token, new_token, 1)
-                    print(f"Modified line 211: {repr(lines[idx])}")
+                        new_word = f"{target_word}.toLong()"
+                    lines[idx] = orig[:target_match.start()] + new_word + orig[target_match.end():]
                 else:
-                    lines[idx] = re.sub(r'\b(\d+)\b', r'\1L', line)
-                    print(f"Fallback modified line 211: {repr(lines[idx])}")
+                    match_digit = re.search(r'\b(\d+)\b', orig)
+                    if match_digit:
+                        lines[idx] = orig.replace(match_digit.group(1), match_digit.group(1) + "L", 1)
+                
+                print(f"Modified line 211: {lines[idx].strip()}")
             
             with open(file_path, "w") as f:
                 f.writelines(lines)
@@ -115,25 +113,3 @@ jobs:
         gradle-version: 8.4
 
     - name: Build with Gradle
-      run: gradle assembleDebug --no-daemon
-
-    - name: Upload APK as Artifact
-      if: success()
-      uses: actions/upload-artifact@v4
-      with:
-        name: xenos-wsa-debug-apk
-        path: app/build/outputs/apk/debug/app-debug.apk
-        retention-days: 30
-
-    - name: Print Build Summary
-      if: success()
-      run: |
-        echo "================================"
-        echo "✅ Build Completed Successfully!"
-        echo "================================"
-        echo "APK Location: app/build/outputs/apk/debug/app-debug.apk"
-        ls -lh app/build/outputs/apk/debug/app-debug.apk
-        echo ""
-        echo "📱 To install on device:"
-        echo "adb install app/build/outputs/apk/debug/app-debug.apk"
-        echo "================================"
