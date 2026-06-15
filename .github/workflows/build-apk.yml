@@ -22,6 +22,13 @@ jobs:
         distribution: 'temurin'
         cache: gradle
 
+    - name: Fix legacy JVM options
+      run: |
+        if [ -f gradle.properties ]; then
+          echo "Removing deprecated MaxPermSize from gradle.properties..."
+          sed -i 's/-XX:MaxPermSize=[0-9]*[mgMG]//g' gradle.properties
+        fi
+
     - name: Setup Gradle
       uses: gradle/actions/setup-gradle@v3
 
