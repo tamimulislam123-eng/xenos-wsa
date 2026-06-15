@@ -79,7 +79,6 @@ jobs:
                 orig = lines[idx]
                 print(f"Original line 211: {orig.strip()}")
                 
-                # Find the precise word spanning across column 31
                 target_word = None
                 target_match = None
                 for match in re.finditer(r'\b[a-zA-Z0-9_]+\b', orig):
@@ -113,3 +112,25 @@ jobs:
         gradle-version: 8.4
 
     - name: Build with Gradle
+      run: gradle assembleDebug --no-daemon
+
+    - name: Upload APK as Artifact
+      if: success()
+      uses: actions/upload-artifact@v4
+      with:
+        name: xenos-wsa-debug-apk
+        path: app/build/outputs/apk/debug/app-debug.apk
+        retention-days: 30
+
+    - name: Print Build Summary
+      if: success()
+      run: |
+        echo "================================"
+        echo "✅ Build Completed Successfully!"
+        echo "================================"
+        echo "APK Location: app/build/outputs/apk/debug/app-debug.apk"
+        ls -lh app/build/outputs/apk/debug/app-debug.apk
+        echo ""
+        echo "📱 To install on device:"
+        echo "adb install app/build/outputs/apk/debug/app-debug.apk"
+        echo "================================"
